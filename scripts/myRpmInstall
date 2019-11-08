@@ -1,0 +1,68 @@
+#!/bin/bash
+
+usage="Usage: myRpmInstall <prefix> <module.rpm> <package.rpm>"
+
+if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
+    echo $usage
+    exit 0
+fi
+
+if [ $# -lt 3 ]; then
+    echo "Error: Less than two command line arguments."
+    echo $usage
+    exit 1
+fi
+
+prefix=$1
+if [ ! -d $prefix ]; then
+    echo "Error: The path $prefix was not found.  It should be an existing directory"
+    echo $usage
+    exit 2
+fi
+
+if [ ! -d $prefix/db ]; then
+    mkdir $prefix/db
+fi
+
+if [[ $2 == *"modulefile"* ]]; then
+	modFile=$2 && rpmFile=$3
+else
+	modFile=$3 && rpmFile=$2
+fi
+
+for file in $modFile $rpmFile; do
+	if [ ! -f $file ]; then
+	    echo "Error: could not find the RPM file $file.  If it is in a directory, give a path to the file."
+	    echo $usage
+	fi
+done
+
+DB=${prefix}/db
+if [ "$TACC_SYSTEM" == "ls5" ]; then
+	DBA="--dbpath $DB"
+else
+	DBA="--dbpath=$DB"
+fi
+
+echo "Installing RPMs"
+RPM_DBPATH=$DB rpm --relocate /tmpmod=$prefix -i --nodeps ${DBA} $modFile && \
+RPM_DBPATH=$DB rpm --relocate /tmprpm=$prefix -i --nodeps ${DBA} $rpmFile && \
+echo "INSTALLED! - ignore the warnings"
+
+#figure out where the modulefile is
+#first grab modulefile
+modulefile=$(rpm -qlp $modFile | grep modulefiles | grep 'lua$')
+#grab path up to the string "modulefiles"
+modfilespath=$(echo $modulefile | sed -e 's@^\(.*\)/modulefiles.*@\1@')
+
+# OK, let's give it a try
+
+modulefile=${prefix}${modulefile##${modfilespath}} 
+
+echo "Checking the \$MODULEPATH variable."
+if (( $(echo $MODULEPATH | grep -c "${modulefile%/*/*}") )); then
+    echo "Everything looks good.  Try loading the module"
+else
+    echo "looks like the \$MODULEPATH environment variable needs updating."
+    echo "Check the README.md file if you aren't sure how to do that."
+fi
